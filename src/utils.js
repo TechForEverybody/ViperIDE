@@ -29,6 +29,27 @@ export class Mutex {
     }
 }
 
+// micropython.org (and gitlab.com) send no Access-Control-Allow-Origin header, so
+// reading their response body from fetch() needs a CORS-relaying proxy in front.
+// cors.lol's pro tier takes the target as a query parameter plus an access token,
+// rather than the plain URL-prefix style of a simple relaying proxy - a function here
+// (not a constant to prepend) is what lets every call site stay a one-liner regardless.
+// The endpoint template (host + token) is never in the source or the bundle in plain
+// form: Rollup substitutes CORS_PROXY_BLOB, built by corsproxy.mjs from CORS_PROXY
+// in the environment / .env file (Node / test environments read it from process.env).
+// Layout: base64(key[8] + (text XOR key)); `{}` in the text stands for the target url.
+export function corsProxyUrl(url) {
+    const blob = (typeof CORS_PROXY_BLOB !== 'undefined')
+        ? CORS_PROXY_BLOB
+        : (globalThis.process?.env?.['CORS_PROXY_BLOB'] || '')
+    const raw = atob(blob)
+    let tpl = ''
+    for (let i = 8; i < raw.length; i++) {
+        tpl += String.fromCharCode(raw.charCodeAt(i) ^ raw.charCodeAt(i % 8))
+    }
+    return tpl.replace('{}', encodeURIComponent(url))
+}
+
 export async function fetchJSON(url) {
     const response = await fetch(url, {cache: 'no-store'})
     if (!response.ok) { throw new Error(response.status) }
